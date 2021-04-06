@@ -23,7 +23,7 @@ router.post('/user/createpost', checkToken, function (req, res) {
 })
 
 router.get('/user/allpublished', function (req, res) {
-    Post.find({status: ["Ожидание ответов", "Получен ответ"]}).then(posts => {
+    Post.find({status: ["Ожидание ответов", "Ожидание ответов ", "Получен ответ"]}).then(posts => {
         return res.json({posts})
     })
 })
