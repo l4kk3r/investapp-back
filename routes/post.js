@@ -1,92 +1,116 @@
 const express = require("express")
 const router = express.Router()
 const mongoose = require('mongoose')
-const User = mongoose.model("User")
 const Post = mongoose.model("Post")
 const Answer = mongoose.model("Answer")
 const {telebot, } = require('../bots/telegram')
 const checkToken = require('../middleware/checkToken')
- 
-// telegram-bot-config
+const onlyAdminsRoute = require('../middleware/onlyAdminsRoute')
 
 //routes for any users
-router.post('/user/createpost', checkToken, function (req, res) {
-    const post = new Post(req.body)
-    post.save().then(post => {
-        console.log(post)
+router.post('/user/createpost', checkToken, async function (req, res) {
+    try {
+        const {id} = req.user
+        const post = new Post(req.body)
+        post.creator_id = id
+        await post.save()
         telebot.sendMessage('@inv777', `📝#НоваяЗаявка\nОбъект: ${req.body.object}\nОбработайте её в течение 5 минут!`)
-        return res.json({message: "Новая запись успешно создана"})
-    }).catch(err=> {
-        console.log(err)
-        return res.json({message: 'Возникла ошибка. Пожалуйста, проверьте правильность введённых данных.'})
-    })
+        res.json({message: "Новая запись успешно создана"})
+    } catch (err) {
+        res.json({message: 'Возникла ошибка. Пожалуйста, проверьте правильность введённых данных.'})
+    }
 })
 
-router.get('/user/allpublished', function (req, res) {
-    Post.find({status: ["Ожидание ответов", "Ожидание ответов ", "Получен ответ"]}).then(posts => {
-        return res.json({posts})
-    })
+router.get('/user/allpublished', async function (req, res) {
+    const posts = await Post.find({status: ["Ожидание ответов", "Ожидание ответов ", "Получен ответ"]})
+    res.json({posts})
 })
 
-router.post('/user/post', function (req, res) {
+router.post('/user/post', async function (req, res) {
     const {id} = req.body
-    Post.find({id}).then(post => {console.log(post); return res.json({post})})
+    const post = await Post.find({id})
+    res.json({post})
 })
 
-router.post('/user/newanswer', checkToken,  function (req,res) {
-    const {amount, rate, period, post_id} = req.body
-    const answer = new Answer(req.body)
-    answer.save().then(answer=> {
-        Post.findOne({id: post_id, status: 'Ожидание ответов'}).then(post => {
-            if (post) {
-                Post.updateOne( {id: post_id}, {$set: {status: 'Получен ответ'}}).then(ans=>{1+1;})
-            }
-            telebot.sendMessage('@inv777', `📬#НовыйОтвет\nОбъявление: https://investapp.vercel.app/post/${post_id}\nПредлагаемая сумма: ${amount}\nПредлагаемая ставка: ${rate}\nПредлагаемый срок: ${period}\nОбработайте его в течение 5 минут!`)
-            return res.json({message: 'Ответ успешно отправлен'})
-        })
-    }).catch(err=> {
-        console.log(err)
+router.post('/user/newanswer', checkToken, async function (req,res) {
+    try {
+        const {amount, rate, period, post_id} = req.body
+        const answer = new Answer(req.body)
+        await answer.save()
+        const post = await Post.findOne({id: post_id, status: 'Ожидание ответов'})
+        if (post) {
+            Post.updateOne( {id: post_id}, {$set: {status: 'Получен ответ'}})
+        }
+        telebot.sendMessage('@inv777', `📬#НовыйОтвет\nОбъявление: https://investapp.vercel.app/post/${post_id}\nПредлагаемая сумма: ${amount}\nПредлагаемая ставка: ${rate}\nПредлагаемый срок: ${period}\nОбработайте его в течение 5 минут!`)
+        res.json({message: 'Ответ успешно отправлен'})
+    } catch (err) {
         return res.json({message: 'Возникла ошибка. Пожалуйста, проверьте правильность введённых данных.'})
-    })
+    }
 })
 
-router.post('/user/getposts', function (req, res) {
+router.post('/user/getposts', async function (req, res) {
     const {creator_id} = req.body
-    Answer.find({creator_id}).then(answers => {Post.find({creator_id}).then(posts => {return res.json({posts, answers})})})
+    const answers = await Answer.find({creator_id})
+    const posts = await Post.find({creator_id})
+    res.json({posts, answers})
 })
 
-router.post('/user/updatepost', checkToken, function (req, res) {
-    const {id} = req.body
-    Post.updateOne({id}, {$set: req.body}).then(ans => {return res.json({message: "Запись успешно изменена"})})
+router.post('/user/updatepost', checkToken, async function (req, res) {
+    try {
+        const {id} = req.body
+        // Проверка. Редактировать может только создатель
+        const post = await Post.findOne({id})
+        if (post.creator_id !== req.user.id) return res.status(503).json({message: 'Forbidden'})
+        //
+        await Post.updateOne({id}, {$set: req.body})
+        res.json({message: "Запись успешно изменена"})
+    } catch (err) {
+        res.status(520).json({message: "Неизвестная ошибка"})
+    }
 })
 
-router.post('/user/answers', function (req, res) {
+router.post('/user/answers', async function (req, res) {
     const {investor_id} = req.body
-    Answer.find({investor_id: investor_id}).then(answers => {return res.json({answers})})
+    const answers = await Answer.find({investor_id: investor_id})
+    res.json({answers})
 })
 
-router.post('/user/answer-changestatus', checkToken, function (req, res) {
-    const {id, status} = req.body
-    Answer.updateOne({id}, {$set: {status}}).then(ans =>  {return res.json({message: "Статус ответа успешно изменен"})})
+router.post('/user/answer-changestatus', checkToken, async function (req, res) {
+    try {
+        const {id, status} = req.body
+        // Проверка. Редактировать может только создатель
+        const answer = await Answer.findOne({id})
+        if (answer.creator_id !== req.user.id) return res.status(503).json({message: 'Forbidden'})
+        //
+        await Answer.updateOne({id}, {$set: {status}})
+        res.json({message: "Статус ответа успешно изменен"})
+    } catch (err) {
+        res.status(520).json({message: "Неизвестная ошибка"})
+    }
 })
 
 //admin routes
 
-router.post('/admin/updatepost', checkToken, function (req, res) {
-    const {id} = req.body
-    Post.updateOne({id}, {$set: req.body}).then(ans=>{return res.json({message:"Запись изменена"})})
-    if (req.body.status === 'Ожидание ответов') {
-        User.find({telegram_notify: 'available', fmin_amount: { $gt: req.body.amount }, fmax_amount: {$gt: req.body.amount * -1}}).then(users => {
-            for (user in users) {
-                console.log(users[user])
-                telebot.sendMessage(users[user].telegram_login, `Новое объявление! https://investapp.vercel.app/post/${id}`)
-            }
-        })
+router.post('/admin/updatepost', checkToken, async function (req, res) {
+    try {
+        const {id} = req.body
+        await Post.updateOne({id}, {$set: req.body})
+    } catch (err) {
+        res.status(520).json({message: "Неизвестная ошибка"})
     }
+    // if (req.body.status === 'Ожидание ответов') {
+    //     const users = User.find({telegram_notify: 'available', fmin_amount: { $gt: req.body.amount }, fmax_amount: {$gt: req.body.amount * -1}})
+    //     for (user in users) {
+    //         console.log(users[user])
+    //         telebot.sendMessage(users[user].telegram_login, `Новое объявление! https://investapp.vercel.app/post/${id}`)
+    //     }
+    // }
 })
 
-router.get('/admin/allposts', checkToken, function (req, res) {
-    Answer.find({}).then(answers => {Post.find({}).then(posts => {return res.json({posts, answers})})})
+router.get('/admin/allposts', checkToken, onlyAdminsRoute, async function (req, res) {
+    const answers = await Answer.find({})
+    const posts = await Post.find({})
+    res.json({posts, answers})
 })
 
 

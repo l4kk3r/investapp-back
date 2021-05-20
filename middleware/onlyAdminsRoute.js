@@ -9,9 +9,9 @@ module.exports = function(req, res, next) {
     }
     try {
         const decoded = jwt.verify(token, JWTOKEN)
-        req.user = decoded;
-        if (!decoded) {
-            res.status(401).json({ message: 'Token is invalid' })
+        req.sendingUser = decoded;
+        if (!decoded.acctype === 'admin') {
+            res.status(403).json({ message: 'Forbidden' })
         }
         next()
     } catch (error) {

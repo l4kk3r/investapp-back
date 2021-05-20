@@ -12,6 +12,7 @@
     "aws-sdk": "^2.865.0",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.19.0",
+    "cors": "^2.8.5",
     "dotenv": "^8.2.0",
     "express": "^4.17.1",
     "http": "0.0.1-security",
@@ -19,6 +20,8 @@
     "imagemin-mozjpeg": "^9.0.0",
     "jsonwebtoken": "^8.5.1",
     "mongoose": "^5.12.0",
+    "mongoose-auto-increment": "^5.0.1",
+    "mongoose-double": "0.0.1",
     "multer": "^1.4.2",
     "node-telegram-bot-api": "^0.51.0",
     "uuid": "^8.3.2"
